@@ -8,6 +8,7 @@ from analyzer import (
     calculate_score, get_label_and_color,
     OIL_BULLISH, OIL_BEARISH, GOLD_BULLISH, GOLD_BEARISH,
 )
+from history import save_today, evaluate_yesterday, get_accuracy_table
 
 st.set_page_config(
     page_title="Ropa & Zlato Advisor",
@@ -94,6 +95,63 @@ gold_score, gold_reason, gold_headlines = calculate_score(
     news["gold"], news["geo"], news["macro"],
     GOLD_BULLISH, GOLD_BEARISH, gold_tech, "gold",
 )
+
+# ── Save today's signals & evaluate yesterday ──────────────────────────────────
+oil_price_now  = oil_data["current_price"]  if oil_data  else None
+gold_price_now = gold_data["current_price"] if gold_data else None
+
+if oil_price_now and gold_price_now:
+    save_today(oil_score, gold_score, oil_price_now, gold_price_now)
+
+evaluation = evaluate_yesterday(oil_price_now, gold_price_now) if (oil_price_now and gold_price_now) else None
+
+if evaluation:
+    st.markdown("---")
+    st.subheader("📋 Vyhodnotenie včerajšieho signálu")
+
+    def _eval_block(label, ev):
+        chg  = ev["change_pct"]
+        icon = "✅ SPRÁVNY" if ev["correct"] else "❌ NESPRÁVNY"
+        lbl, color = get_label_and_color(ev["score"])
+        direction  = "▲" if chg > 0 else "▼"
+        color_chg  = "#00aa00" if chg > 0 else "#cc0000"
+        st.markdown(f"""
+        <div style="border:2px solid {color}; border-radius:10px; padding:14px; background:{color}11;">
+            <b>{label}</b><br>
+            Včerajší signál: <span style="color:{color}; font-weight:bold;">{lbl} ({ev['score']:.1f})</span><br>
+            Cena včera: <b>${ev['prev_price']:,.2f}</b> →
+            Dnes: <b>${ev['today_price']:,.2f}</b>
+            <span style="color:{color_chg}; font-weight:bold;"> {direction} {abs(chg):.2f}%</span><br>
+            Výsledok: <b>{icon}</b>
+        </div>
+        """, unsafe_allow_html=True)
+
+    ev_col1, ev_col2 = st.columns(2)
+    with ev_col1:
+        _eval_block("🛢️ Ropa", evaluation["oil"])
+    with ev_col2:
+        _eval_block("🥇 Zlato", evaluation["gold"])
+
+# ── History table ──────────────────────────────────────────────────────────────
+history_rows = get_accuracy_table()
+if len(history_rows) > 1:
+    st.markdown("---")
+    with st.expander("📅 História signálov (posledných 14 dní)"):
+        rows_display = []
+        for row in history_rows:
+            o_lbl, _ = get_label_and_color(row["oil_score"])
+            g_lbl, _ = get_label_and_color(row["gold_score"])
+            rows_display.append({
+                "Dátum":          row["date"],
+                "Ropa – skóre":   f"{row['oil_score']:.1f}  {o_lbl}",
+                "Ropa – cena":    f"${row['oil_price']:,.2f}",
+                "Zlato – skóre":  f"{row['gold_score']:.1f}  {g_lbl}",
+                "Zlato – cena":   f"${row['gold_price']:,.2f}",
+            })
+        import pandas as pd
+        st.dataframe(pd.DataFrame(rows_display), use_container_width=True, hide_index=True)
+
+st.markdown("---")
 
 # ── Commodity columns ──────────────────────────────────────────────────────────
 def stars(score):
